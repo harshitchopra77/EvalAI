@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EvalAI — Answer Evaluation</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,400&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ══════════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════════ */
+:root {
+  --bg:           #f5f0eb;
+  --surface:      #faf7f2;
+  --surface2:     #f0ece7;
+  --border:       #e8dfd6;
+  --border-lit:   #d9cfc4;
+  --text:         #3d3531;
+  --muted:        #8b7f75;
+  --dim:          #b8afa5;
+  --red:          #c85a38;
+  --red-dim:      rgba(200,90,56,.12);
+  --green:        #2ca870;
+  --green-dim:    rgba(44,168,112,.1);
+  --blue:         #3d7fa8;
+  --blue-dim:     rgba(61,127,168,.1);
+  --amber:        #d4891a;
+  --amber-dim:    rgba(212,137,26,.1);
+  --mono:         'JetBrains Mono', monospace;
+  --serif:        'Fraunces', Georgia, serif;
+  --sans:         'Syne', sans-serif;
+  --r:            8px;
+}
+
+/* ══════════════════════════════════════════════
+   RESET
+══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ══════════════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════════════ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  gap: 20px;
+}
+
+.topbar-logo {
+  font-family: var(--serif);
+  font-size: 35px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  margin-left: 50%;
+  gap: 1px;
+}
+
+.topbar-logo .accent { color: var(--red); font-style: italic; }
+
+.topbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.topbar-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  letter-spacing: 0.3px;
+}
+
+.topbar-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.status-led {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: blink 3s ease-in-out infinite;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ══════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════ */
+.shell { /* FIX */
+  min-height: calc(100vh - 56px);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr); 
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+  user-select: none;
+}
+
+.resize-handle:hover {
+  background: #000;
+  opacity: 0.5;
+}
+
+.shell.resizing .resize-handle {
+  background: #000;
+  opacity: 0.5;
+}
+
+/* ══════════════════════════════════════════════
+   LEFT PANEL
+══════════════════════════════════════════════ */
+.left {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  min-width: 280px;
+  max-width: 800px;
+  height: calc(100vh - 56px);
+}
+
+.left-head {
+  padding: 28px 28px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.left-head h2 {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.left-head p {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+.left, .right {
+  min-height: 0;
+}
+/* ── Field ── */
+.field {}
+
+.field-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field-top label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.badge-req {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid rgba(200,90,56,.2);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.badge-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* ── Inputs ── */
+select,
+input[type="number"],
+textarea {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 11px 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b7f75'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+textarea { resize: vertical; line-height: 1.6; }
+
+select:focus,
+input:focus,
+textarea:focus {
+  border-color: var(--border-lit);
+  box-shadow: 0 0 0 3px rgba(0,0,0,.04);
+}
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ── Submit zone ── */
+.submit-zone {
+  padding: 20px 28px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 14px 20px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--text);
+  border: none;
+  border-radius: var(--r);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: opacity .15s, transform .1s;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-submit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(200,90,56,.15) 100%);
+}
+
+.btn-submit:hover  { opacity: .92; }
+.btn-submit:active { transform: scale(.99); }
+.btn-submit:disabled { opacity: .35; cursor: not-allowed; }
+
+.btn-icon { transition: transform .2s; }
+.btn-submit:not(:disabled):hover .btn-icon { transform: translateX(4px); }
+
+.err-msg {
+  display: none;
+  margin-top: 12px;
+  padding: 11px 14px;
+  background: var(--red-dim);
+  border: 1px solid rgba(200,90,56,.25);
+  border-radius: var(--r);
+  font-size: 12px;
+  color: #a84528;
+  font-family: var(--mono);
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════
+   RIGHT PANEL
+══════════════════════════════════════════════ */
+
+.right {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;   /* FIX */
+  min-width: 0;       /* FIX */
+}
+
+/* ── Idle ── */
+.idle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px;
+  animation: fadein .4s ease;
+}
+
+.idle-glyph {
+  font-family: var(--serif);
+  font-size: 64px;
+  font-style: italic;
+  font-weight: 300;
+  color: var(--dim);
+  line-height: 1;
+  user-select: none;
+}
+
+.idle h3 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.idle p {
+  font-size: 12px;
+  color: var(--dim);
+  text-align: center;
+  max-width: 300px;
+  font-family: var(--mono);
+  line-height: 1.7;
+}
+
+/* ── Loading ── */
+.loading {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.loading-ring {
+  width: 44px; height: 44px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-msg {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  transition: opacity .3s;
+}
+
+/* ── Results ── */
+.results {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  animation: fadein .35s ease;
+}
+
+@keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+/* Score hero */
+.score-hero {
+  padding: 36px 40px 32px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.score-hero::before {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(224,90,58,.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.score-number {
+  font-family: var(--serif);
+  font-size: 80px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -3px;
+  color: var(--text);
+}
+
+.score-slash {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--dim);
+  padding-bottom: 12px;
+}
+
+.score-right {
+  flex: 1;
+  padding-bottom: 8px;
+}
+
+.grade-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.grade-A { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(44,168,112,.2); }
+.grade-B { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(61,127,168,.2); }
+.grade-C { background: var(--amber-dim);  color: var(--amber);  border: 1px solid rgba(212,137,26,.2); }
+.grade-D { background: var(--red-dim);    color: #b85437;       border: 1px solid rgba(200,90,56,.2); }
+.grade-F { background: rgba(180,30,30,.12); color: #a84428;     border: 1px solid rgba(180,30,30,.25); }
+
+.pct-track {
+  width: 100%;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pct-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--red) 0%, var(--amber) 100%);
+  width: 0%;
+  transition: width .9s cubic-bezier(.4,0,.2,1);
+}
+
+.pct-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 6px;
+}
+
+/* Result body */
+.result-body {
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+/* Section heading */
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sec-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.sec-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Summary */
+.summary {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.75;
+  color: #5a5449;
+  font-style: italic;
+}
+
+/* Tags */
+.tag-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tag {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  line-height: 1.45;
+  font-family: var(--sans);
+}
+
+.tag-g { background: var(--green-dim); color: #1d8a59; border: 1px solid rgba(44,168,112,.15); }
+.tag-r { background: var(--red-dim);   color: #a84428; border: 1px solid rgba(200,90,56,.2); }
+
+/* Two-col for strengths/weaknesses */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+
+/* Change cards */
+.changes { display: flex; flex-direction: column; gap: 10px; }
+
+.change-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  transition: border-color .15s;
+}
+
+.change-card:hover { border-color: var(--border-lit); }
+
+.change-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.change-idx {
+  font-family: var(--mono);
+  font-size: 9px;
+  background: var(--dim);
+  color: var(--bg);
+  border-radius: 3px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  letter-spacing: 0.5px;
+}
+
+.change-orig {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #a84428;
+  background: var(--red-dim);
+  border: 1px solid rgba(200,90,56,.15);
+  border-radius: 4px;
+  padding: 2px 8px;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.change-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.change-issue {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  font-family: var(--mono);
+}
+
+.change-fix {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1d8a59;
+  background: var(--green-dim);
+  border: 1px solid rgba(44,168,112,.15);
+  border-radius: 6px;
+  padding: 10px 13px;
+  display: flex;
+  gap: 8px;
+}
+
+.change-fix::before {
+  content: '→';
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Rewritten answer */
+.rewrite-shell {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.rewrite-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.rewrite-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rewrite-led {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+.rewrite-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.copy-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: color .15s, border-color .15s;
+}
+
+.copy-btn:hover { color: var(--text); border-color: var(--border-lit); }
+
+.rewrite-body {
+  padding: 22px 22px;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.85;
+  color: #5a5449;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rewrite-delta {
+  padding: 13px 22px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.6;
+}
+
+.rewrite-delta::before {
+  content: 'Δ  ';
+  color: var(--amber);
+}
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════ */
+@media (max-width: 880px) {
+  .shell { grid-template-columns: 1fr; }
+  .left  { border-right: none; border-bottom: 1px solid var(--border); }
+  .score-hero, .result-body { padding: 24px 20px; }
+  .score-number { font-size: 56px; }
+  .two-col { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="topbar-logo">Eval<span class="accent">AI</span></div>
+  <div class="topbar-sep"></div>
+  <!-- <span class="topbar-pill">{{ provider }} · {{ model }}</span> -->
+  <div class="topbar-status">
+    <span class="status-led"></span>
+    ONLINE
+  </div>
+</header>
+
+<div class="shell">
+  <div class="resize-handle"></div>
+
+  <!-- ══ LEFT: INPUT ══ -->
+  <aside class="left">
+    <div class="left-head">
+      <h1>New Evaluation</h1>
+      
+    </div>
+
+    <div class="form-scroll">
+
+      <div class="row2">
+        <div class="field">
+          <div class="field-top">
+            <label>Subject</label>
+            <span class="badge-req">req</span>
+          </div>
+          <select id="subject">
+            <option value="General">General</option>
+            <option value="Mathematics">Mathematics</option>
+            <option value="Physics">Physics</option>
+            <option value="Chemistry">Chemistry</option>
+            <option value="Biology">Biology</option>
+            <option value="Computer Science">Computer Science</option>
+            <option value="History">History</option>
+            <option value="Geography">Geography</option>
+            <option value="Economics">Economics</option>
+            <option value="English">English / Literature</option>
+            <option value="Political Science">Political Science</option>
+            <option value="Psychology">Psychology</option>
+            <option value="Philosophy">Philosophy</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-top">
+            <label>Max Marks</label>
+            <span class="badge-req">req</span>
+          </div>
+          <input type="number" id="max_marks" value="10" min="1" max="200"/>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label>Question</label>
+          <span class="badge-count" id="qcount">0 ch</span>
+        </div>
+        <textarea id="question" rows="3"
+          placeholder="Paste the exam question here…"
+          oninput="cnt(this,'qcount')"></textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label>Student's Answer</label>
+          <span class="badge-count" id="acount">0 ch</span>
+        </div>
+        <textarea id="answer" rows="9"
+          placeholder="Paste the student's answer here…"
+          oninput="cnt(this,'acount')"></textarea>
+      </div>
+
+    </div>
+
+    <div class="submit-zone">
+      <button class="btn-submit" id="btn" onclick="run()">
+        <span id="btn-label">Evaluate Answer</span>
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="err-msg" id="err"></div>
+    </div>
+  </aside>
+
+  <!-- ══ RIGHT: OUTPUT ══ -->
+  <main class="right">
+
+    <!-- IDLE -->
+    <div class="idle" id="idle">
+      <div class="idle-glyph">∅</div>
+      <h3>No result yet</h3>
+      <p>Submit a question and student answer<br>to receive AI evaluation.</p>
+    </div>
+
+    <!-- LOADING -->
+    <div class="loading" id="loading">
+      <div class="loading-ring"></div>
+      <div class="loading-msg" id="lmsg">Initialising…</div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results" id="results">
+
+      <div class="score-hero">
+        <div class="score-number" id="r-marks">—</div>
+        <div class="score-slash" id="r-denom">/ 10</div>
+        <div class="score-right">
+          <div class="grade-tag grade-A" id="r-grade">—</div>
+          <div class="pct-track"><div class="pct-fill" id="r-fill"></div></div>
+          <div class="pct-label" id="r-pct">0%</div>
+        </div>
+      </div>
+
+      <div class="result-body">
+
+        <!-- Summary -->
+        <div>
+          <div class="sec-head"><span class="sec-label">Summary</span><div class="sec-line"></div></div>
+          <p class="summary" id="r-summary"></p>
+        </div>
+
+        <!-- Strengths + Weaknesses -->
+        <div class="two-col">
+          <div>
+            <div class="sec-head"><span class="sec-label">Strengths</span><div class="sec-line"></div></div>
+            <div class="tag-wrap" id="r-strengths"></div>
+          </div>
+          <div>
+            <div class="sec-head"><span class="sec-label">Weaknesses</span><div class="sec-line"></div></div>
+            <div class="tag-wrap" id="r-weaknesses"></div>
+          </div>
+        </div>
+
+        <!-- Recommended Changes -->
+        <div>
+          <div class="sec-head"><span class="sec-label">Recommended Changes</span><div class="sec-line"></div></div>
+          <div class="changes" id="r-changes"></div>
+        </div>
+
+        <!-- Rewritten Answer -->
+        <div>
+          <div class="sec-head"><span class="sec-label">Improved Answer</span><div class="sec-line"></div></div>
+          <div class="rewrite-shell">
+            <div class="rewrite-topbar">
+              <div class="rewrite-topbar-left">
+                <div class="rewrite-led"></div>
+                <span class="rewrite-title">AI Rewrite</span>
+              </div>
+              <button class="copy-btn" onclick="copy()">Copy</button>
+            </div>
+            <div class="rewrite-body" id="r-rewrite"></div>
+            <div class="rewrite-delta" id="r-delta"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ── Resizable left panel ── */
+let isResizing = false;
+let startX = 0;
+let startWidth = 0;
+
+function initResize() {
+  const shell = document.querySelector('.shell');
+  const left = document.querySelector('.left');
+  const handle = document.querySelector('.resize-handle');
+
+  handle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = left.offsetWidth;
+    shell.classList.add('resizing');
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) {
+      // Update cursor position continuously
+      const rect = shell.getBoundingClientRect();
+      const handlePosition = left.offsetWidth;
+      if (e.clientX >= rect.left + handlePosition - 3 && e.clientX <= rect.left + handlePosition + 3) {
+        document.body.style.cursor = 'col-resize';
+      } else {
+        document.body.style.cursor = 'default';
+      }
+      return;
+    }
+    
+    const diff = e.clientX - startX;
+    const newWidth = Math.max(280, Math.min(startWidth + diff, 800));
+    left.style.minWidth = newWidth + 'px';
+    left.style.maxWidth = newWidth + 'px';
+    
+    // Update handle position
+    handle.style.left = newWidth - 3 + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      shell.classList.remove('resizing');
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    }
+  });
+
+  // Initial handle position
+  handle.style.left = (left.offsetWidth - 3) + 'px';
+}
+
+/* ── Char counter ── */
+function cnt(el, id) {
+  document.getElementById(id).textContent = el.value.length + ' ch';
+}
+
+/* ── Loading messages ── */
+const MSGS = [
+  'Reading the question…',
+  'Analysing student answer…',
+  'Scoring against criteria…',
+  'Building recommended changes…',
+  'Rewriting improved answer…',
+  'Finalising evaluation…',
+];
+let _msgTimer = null;
+function startMsgs() {
+  let i = 0;
+  document.getElementById('lmsg').textContent = MSGS[0];
+  _msgTimer = setInterval(() => {
+    i = (i + 1) % MSGS.length;
+    document.getElementById('lmsg').textContent = MSGS[i];
+  }, 1900);
+}
+function stopMsgs() { clearInterval(_msgTimer); }
+
+/* ── Show/hide panels ── */
+function show(id) {
+  ['idle','loading','results'].forEach(n => {
+    const el = document.getElementById(n);
+    el.style.display = n === id ? 'flex' : 'none';
+  });
+}
+
+/* ── Submit ── */
+async function run() {
+  const btn = document.getElementById('btn');
+  const lbl = document.getElementById('btn-label');
+  const err = document.getElementById('err');
+
+  const q = document.getElementById('question').value.trim();
+  const a = document.getElementById('answer').value.trim();
+  if (!q || !a) {
+    err.textContent = '⚠  Question and Answer are required.';
+    err.style.display = 'block';
+    return;
+  }
+
+  err.style.display = 'none';
+  btn.disabled = true;
+  lbl.textContent = 'Evaluating…';
+  show('loading');
+  startMsgs();
+
+  try {
+    const res = await fetch('/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject:   document.getElementById('subject').value,
+        max_marks: parseInt(document.getElementById('max_marks').value) || 10,
+        question:  q,
+        answer:    a,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Unknown error');
+    render(data.result);
+    show('results');
+    document.getElementById('results').scrollTop = 0;
+  } catch (e) {
+    err.textContent = '⚠  ' + e.message;
+    err.style.display = 'block';
+    show('idle');
+  } finally {
+    stopMsgs();
+    btn.disabled = false;
+    lbl.textContent = 'Evaluate Answer';
+  }
+}
+
+/* ── Render results ── */
+function render(r) {
+  /* Score */
+  document.getElementById('r-marks').textContent = r.marks_awarded ?? '—';
+  document.getElementById('r-denom').textContent  = '/ ' + (r.max_marks || 10);
+  document.getElementById('r-pct').textContent    = (r.percentage ?? 0) + '%';
+
+  const g = document.getElementById('r-grade');
+  g.textContent = r.grade || '—';
+  g.className   = 'grade-tag grade-' + (r.grade || 'D');
+
+  setTimeout(() => {
+    document.getElementById('r-fill').style.width =
+      Math.min(100, Math.max(0, r.percentage ?? 0)) + '%';
+  }, 60);
+
+  /* Summary */
+  document.getElementById('r-summary').textContent = r.summary || '';
+
+  /* Tags */
+  document.getElementById('r-strengths').innerHTML =
+    (r.strengths || []).map(s => `<span class="tag tag-g">${x(s)}</span>`).join('');
+  document.getElementById('r-weaknesses').innerHTML =
+    (r.weaknesses || []).map(w => `<span class="tag tag-r">${x(w)}</span>`).join('');
+
+  /* Changes */
+  document.getElementById('r-changes').innerHTML =
+    (r.recommended_changes || []).map((c, i) => `
+      <div class="change-card">
+        <div class="change-top">
+          <span class="change-idx">#${i + 1}</span>
+          <span class="change-orig">${x(c.original_phrase || 'Missing section')}</span>
+        </div>
+        <div class="change-body">
+          <div class="change-issue">${x(c.issue || '')}</div>
+          <div class="change-fix">${x(c.fix || '')}</div>
+        </div>
+      </div>`).join('');
+
+  /* Rewrite */
+  document.getElementById('r-rewrite').textContent = r.rewritten_answer || '';
+  document.getElementById('r-delta').textContent   = r.rewrite_delta    || '';
+}
+
+/* ── Copy rewrite ── */
+function copy() {
+  const text = document.getElementById('r-rewrite').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const b = document.querySelector('.copy-btn');
+    b.textContent = 'Copied ✓';
+    setTimeout(() => b.textContent = 'Copy', 2000);
+  });
+}
+
+/* ── Escape HTML ── */
+function x(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── Demo prefill ── */
+addEventListener('DOMContentLoaded', () => {
+  const q = '';
+  const a = '';
+  document.getElementById('subject').value = 'Biology';
+  document.getElementById('question').value = q;
+  document.getElementById('answer').value   = a;
+  cnt(document.getElementById('question'), 'qcount');
+  cnt(document.getElementById('answer'),   'acount');
+  initResize();
+});
+</script>
+</body>
+</html>
